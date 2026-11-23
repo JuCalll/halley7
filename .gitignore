@@ -1,0 +1,21 @@
+# Compilados y datos de ejecucion
+bin/
+trabajo/
+logs/
+web/elm.js
+
+# Haskell
+*.hi
+*.o
+haskell/build/
+
+# Elm
+elm-stuff/
+
+# Java
+*.class
+
+# Editores
+.idea/
+*.iml
+.vscode/
