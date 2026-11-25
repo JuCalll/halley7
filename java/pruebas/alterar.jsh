@@ -8,4 +8,4 @@ import java.sql.*;
     con.close();
     var a = new halley.almacen.AlmacenSqlite(java.nio.file.Path.of("trabajo/prueba/halley.db"));
     System.out.println(a.verificarCustodia());
-    /exit
+/exit
