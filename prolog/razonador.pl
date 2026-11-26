@@ -5,7 +5,34 @@
 :- use_module(library(time)).
 :- use_module(library(aggregate)).
 
-% Uso: swipl razonador.pl -- hechos.pl <pregunta> <argumentos...>
+
+
+:- dynamic persona/3, acceso/2, modulo/1, puerta/4, paso/8, presencia/4,
+           sensores_apagados/2, temperatura/4, corte/4, mensaje/5,
+           declaracion/7, oyo_puerta/4, tarjeta_perdida/4.
+
+:- initialization(main, main).
+
+main :-
+    current_prolog_flag(argv, Args),
+    (   Args = [ArchivoHechos, PreguntaAtom | RestoArgs]
+    ->  consult(ArchivoHechos),
+        atom_string(Pregunta, PreguntaAtom),
+        responder(Pregunta, RestoArgs, RespuestaJson),
+        json_write(current_output, RespuestaJson, [width(0)]),
+        nl,
+        halt(0)
+    ;   Resp = _{
+            pregunta: "desconocida",
+            estado: "sin_respuesta",
+            resumen: "Argumentos insuficientes para razonador.pl",
+            candidatos: [],
+            evidencia: []
+        },
+        json_write(current_output, Resp, [width(0)]),
+        nl,
+        halt(1)
+    ).
 
 % Constantes
 
@@ -62,6 +89,248 @@ abierta(Quien, A, B, P, Tc, Limite, Tx, 0, propia(Ev)) :-
 alcanza(Quien, Origen, Destino, T1, T2, Ruta) :-
     T2 >= T1,
     camino(Quien, Origen, Destino, T1, T2, [Origen], Ruta).
+
+camino(_, Destino, Destino, T1, T2, _, []) :-
+    T2 >= T1.
+camino(Quien, Actual, Destino, T1, T2, Visitados, [paso_ruta(Actual, Siguiente, P, Inicio, Motivo) | Resto]) :-
+    abierta(Quien, Actual, Siguiente, P, T1, T2, Inicio, Dur, Motivo),
+    \+ member(Siguiente, Visitados),
+    FinTramo is Inicio + Dur,
+    FinTramo =< T2,
+    camino(Quien, Siguiente, Destino, FinTramo, T2, [Siguiente | Visitados], Resto).
+
+% --- Preguntas del contrato ---
+
+% 1. donde <persona> <hora>
+responder(donde, [PersonaArg, HoraArg], Resp) :-
+    atom_string(Persona, PersonaArg),
+    number_string(Hora, HoraArg),
+    (   \+ persona(Persona, _, _)
+    ->  Resp = _{
+            pregunta: "donde",
+            estado: "no_reconocida",
+            resumen: "Persona no registrada en el sistema",
+            candidatos: [],
+            evidencia: []
+        }
+    ;   findall(Ev-Mod, ubicacion_evidencia(Persona, Hora, Mod, Ev), Hallazgos),
+        (   Hallazgos == []
+        ->  Resp = _{
+                pregunta: "donde",
+                estado: "no_se_puede_saber",
+                resumen: "Sin evidencia suficiente para determinar el modulo en esa hora",
+                candidatos: [],
+                evidencia: []
+            }
+        ;   pairs_values(Hallazgos, Mods),
+            sort(Mods, ModsUnicos),
+            (   ModsUnicos = [_]
+            ->  Estado = "posible",
+                Resumen = "Modulo inferido a partir de la evidencia disponible"
+            ;   Estado = "contradictoria",
+                Resumen = "La evidencia apunta a modulos distintos para la misma hora"
+            ),
+            armar_evidencias(Hallazgos, EvJson),
+            Resp = _{
+                pregunta: "donde",
+                estado: Estado,
+                resumen: Resumen,
+                candidatos: [],
+                evidencia: EvJson
+            }
+        )
+    ).
+
+% 2. quien_en <modulo> <desde> <hasta>
+responder(quien_en, [ModuloArg, DesdeArg, HastaArg], Resp) :-
+    atom_string(Modulo, ModuloArg),
+    number_string(Desde, DesdeArg),
+    number_string(Hasta, HastaArg),
+    findall(_{persona: Id, nombre: Nombre},
+            (persona(Id, Nombre, _), persona_en_intervalo(Id, Modulo, Desde, Hasta, _)),
+            CandidatosRaw),
+    sort(CandidatosRaw, Candidatos),
+    findall(Ev-"asociacion con el modulo en el rango",
+            (persona(Id2, _, _), persona_en_intervalo(Id2, Modulo, Desde, Hasta, Ev)),
+            EvRaw),
+    sort(EvRaw, EvUnica),
+    armar_evidencias(EvUnica, EvJson),
+    (   Candidatos == []
+    ->  Estado = "no_se_puede_saber",
+        Resumen = "Sin evidencia concluyente para el modulo en el intervalo"
+    ;   Estado = "respondida",
+        Resumen = "Candidatos asociados al modulo en el intervalo consultado"
+    ),
+    Resp = _{
+        pregunta: "quien_en",
+        estado: Estado,
+        resumen: Resumen,
+        candidatos: Candidatos,
+        evidencia: EvJson
+    }.
+
+% 3. quien_tarjeta <tarjeta> <hora>
+responder(quien_tarjeta, [TarjetaArg, HoraArg], Resp) :-
+    atom_string(Tarjeta, TarjetaArg),
+    number_string(Hora, HoraArg),
+    findall(_{persona: Id, nombre: Nombre},
+            persona(Id, Nombre, Tarjeta),
+            Candidatos),
+    (   Candidatos == []
+    ->  Resp = _{
+            pregunta: "quien_tarjeta",
+            estado: "sin_registro",
+            resumen: "Tarjeta no registrada en el sistema",
+            candidatos: [],
+            evidencia: []
+        }
+    ;   findall(EvPerd-"tarjeta reportada como perdida",
+                perdida_antes(Tarjeta, Hora, EvPerd),
+                EvPerdList),
+        findall(EvPaso-"uso de tarjeta",
+                (paso(EvPaso, TPaso, Prec, Tarjeta, _, _, _, _),
+                 abs(Hora - TPaso) =< max(Prec, 300)),
+                EvPasos),
+        append(EvPerdList, EvPasos, EvAll),
+        sort(EvAll, EvUnica),
+        armar_evidencias(EvUnica, EvJson),
+        (   EvPerdList \= []
+        ->  Estado = "abierta_probable",
+            Resumen = "Tarjeta reportada como perdida antes o cerca de la hora consultada"
+        ;   Estado = "identificada",
+            Resumen = "Titular registrado de la tarjeta"
+        ),
+        Resp = _{
+            pregunta: "quien_tarjeta",
+            estado: Estado,
+            resumen: Resumen,
+            candidatos: Candidatos,
+            evidencia: EvJson
+        }
+    ).
+
+% 4. recorrido <persona|cualquiera> <origen> <destino> <hora> <minutos>
+responder(recorrido, [SujetoArg, OrigenArg, DestinoArg, HoraArg, MinArg], Resp) :-
+    atom_string(Sujeto, SujetoArg),
+    atom_string(Origen, OrigenArg),
+    atom_string(Destino, DestinoArg),
+    number_string(Hora, HoraArg),
+    number_string(Minutos, MinArg),
+    TFin is Hora + Minutos * 60,
+    (   Sujeto == cualquiera
+    ->  (   findall(Ruta, alcanza(nadie, Origen, Destino, Hora, TFin, Ruta), Rutas),
+            Rutas \= []
+        ->  Estado = "si",
+            Resumen = "Existe al menos un recorrido valido dentro de la ventana de tiempo"
+        ;   Estado = "no",
+            Resumen = "No se encuentra recorrido valido en el tiempo y ventana indicados"
+        ),
+        Resp = _{
+            pregunta: "recorrido",
+            estado: Estado,
+            resumen: Resumen,
+            candidatos: [],
+            evidencia: []
+        }
+    ;   \+ persona(Sujeto, _, _)
+    ->  Resp = _{
+            pregunta: "recorrido",
+            estado: "no_reconocida",
+            resumen: "Persona no registrada para evaluar el recorrido",
+            candidatos: [],
+            evidencia: []
+        }
+    ;   findall(Ruta, alcanza(Sujeto, Origen, Destino, Hora, TFin, Ruta), RutasPersona),
+        (   RutasPersona \= []
+        ->  Estado = "posible",
+            Resumen = "Existe recorrido consistente con las reglas y eventos de la persona"
+        ;   Estado = "no_se_puede_saber",
+            Resumen = "Sin evidencia suficiente para confirmar el recorrido de la persona en ese rango"
+        ),
+        Resp = _{
+            pregunta: "recorrido",
+            estado: Estado,
+            resumen: Resumen,
+            candidatos: [],
+            evidencia: []
+        }
+    ).
+
+% 5. exterior <desde> <hasta>
+responder(exterior, [DesdeArg, HastaArg], Resp) :-
+    number_string(Desde, DesdeArg),
+    number_string(Hasta, HastaArg),
+    caida_minima(CaidaMin),
+    findall(Ev-"paso registrado en puerta exterior",
+            (paso(Ev, T, Prec, _, P, _, _, ok),
+             exterior(P),
+             T + Prec >= Desde,
+             T - Prec =< Hasta),
+            EvPasos),
+    findall(Ev-"testimonio sobre puerta exterior",
+            oyo_puerta(Ev, _, P, _),
+            exterior(P)),
+            EvOidos),
+    findall(Ev-"caida termica abrupta en ALM",
+            (temperatura(Ev, T, 'ALM', Temp),
+             T >= Desde, T =< Hasta,
+             Temp =< CaidaMin),
+            EvTemp),
+    append(EvPasos, EvOidos, Temp1),
+    append(Temp1, EvTemp, EvAll),
+    sort(EvAll, EvUnica),
+    armar_evidencias(EvUnica, EvJson),
+    (   EvUnica == []
+    ->  Resp = _{
+            pregunta: "exterior",
+            estado: "sin_indicios",
+            resumen: "No se registran indicios de apertura exterior en el intervalo",
+            candidatos: [],
+            evidencia: []
+        }
+    ;   Resp = _{
+            pregunta: "exterior",
+            estado: "abierta_probable",
+            resumen: "Existen indicios de apertura de la puerta exterior en el intervalo",
+            candidatos: [],
+            evidencia: EvJson
+        }
+    ).
+
+responder(_, _, Resp) :-
+    Resp = _{
+        pregunta: "desconocida",
+        estado: "sin_respuesta",
+        resumen: "Pregunta no soportada",
+        candidatos: [],
+        evidencia: []
+    }.
+
+% --- Auxiliares ---
+
+ubicacion_evidencia(Persona, Hora, Mod, Ev) :-
+    persona(Persona, _, Tarjeta),
+    paso(Ev, T, Prec, Tarjeta, _, _, Mod, ok),
+    abs(Hora - T) =< max(Prec, 300).
+
+ubicacion_evidencia(Persona, Hora, Mod, Ev) :-
+    declaracion(Ev, T, Prec, _, Persona, Mod, _),
+    abs(Hora - T) =< max(Prec, 600).
+
+persona_en_intervalo(Persona, Mod, Desde, Hasta, Ev) :-
+    persona(Persona, _, Tarjeta),
+    paso(Ev, T, Prec, Tarjeta, _, _, Mod, ok),
+    T + Prec >= Desde,
+    T - Prec =< Hasta.
+
+persona_en_intervalo(Persona, Mod, Desde, Hasta, Ev) :-
+    declaracion(Ev, T, Prec, _, Persona, Mod, _),
+    T + Prec >= Desde,
+    T - Prec =< Hasta.
+
+armar_evidencias([], []).
+armar_evidencias([Ev-Nota | Resto], [_{id: Ev, nota: Nota} | RestoJson]) :-
+    armar_evidencias(Resto, RestoJson).
 
 camino(_, D, D, _, _, Visitados, Ruta) :-
     reverse(Visitados, Ruta).
