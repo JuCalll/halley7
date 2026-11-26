@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Halley-7</title>
+  <link rel="icon" href="data:,">
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #1d2330; background: #f6f7fb; }
+    #app { max-width: 1200px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 22px; margin: 0 12px 0 0; display: inline-block; }
+    h2 { font-size: 18px; } h3 { font-size: 15px; margin-top: 22px; }
+    .cabecera { background: #fff; border: 1px solid #dde1ea; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .quien, .version { margin-right: 14px; font-size: 13px; color: #555; }
+    .desconectado { color: #fff; background: #b4471f; padding: 2px 8px; border-radius: 4px; font-size: 13px; }
+    .pestanas { margin-top: 10px; }
+    button { margin: 2px 6px 2px 0; padding: 6px 12px; border: 1px solid #c9cfdb; background: #fff; border-radius: 6px; cursor: pointer; }
+    button.activa { background: #2f5bd3; color: #fff; border-color: #2f5bd3; }
+    input, select { padding: 5px; margin: 2px 10px 2px 0; border: 1px solid #c9cfdb; border-radius: 4px; }
+    table { border-collapse: collapse; width: 100%; background: #fff; font-size: 13px; }
+    th, td { border: 1px solid #e1e5ee; padding: 4px 6px; text-align: left; vertical-align: top; }
+    th { background: #eef1f7; }
+    .crudo { font-family: monospace; font-size: 11px; color: #555; }
+    .controles, .campos { margin: 8px 0; }
+    .campos label { display: inline-block; margin: 4px 0; }
+    .respuesta, .pregunta { background: #fff; border: 1px solid #dde1ea; border-radius: 8px; padding: 10px; margin: 10px 0; }
+    .titulo, .sub, .ayuda { font-size: 12px; color: #555; }
+    .estado, .etiqueta { padding: 1px 7px; border-radius: 10px; font-size: 12px; background: #e6e9f0; }
+    .seguro, .si, .identificada { background: #d7f0e1; }
+    .posible, .pudo, .varias, .respondida, .abierta_probable { background: #fff0c9; }
+    .no { background: #e9e2f7; }
+    .no_se_puede_saber, .sin_respuesta, .no_reconocida, .sin_evidencia, .sin_registro { background: #e2e6ee; }
+    .contradictoria, .corrupto, .contradiccion { background: #f8d6cc; }
+    .duplicado, .alias, .formato, .descartado { background: #e3ecfb; }
+    .alerta { background: #fff7dc; border: 1px solid #e8c766; padding: 8px; border-radius: 6px; margin: 6px 0; font-size: 13px; }
+    .alerta.cambio { background: #fde3da; border-color: #d98a6c; }
+    .alerta button { float: right; padding: 0 6px; }
+    .mensaje { background: #e9eefc; padding: 8px; border-radius: 6px; }
+    .entrada { max-width: 420px; margin: 80px auto; background: #fff; padding: 24px; border-radius: 10px; border: 1px solid #dde1ea; }
+    .fuente { font-weight: 600; margin-bottom: 2px; }
+    @media print { .cabecera, .alertas, .no-imprimir { display: none; } body { background: #fff; } }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="elm.js"></script>
+  <script>
+    var app = Elm.Main.init({ node: document.getElementById("app") });
+    app.ports.imprimir.subscribe(function () { window.print(); });
+  </script>
+</body>
+</html>
