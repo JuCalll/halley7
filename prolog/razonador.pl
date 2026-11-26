@@ -148,6 +148,7 @@ estado_lugar(P, T, Estado, Modulos) :-
     ->  Estado = seguro
     ;   Estado = posible
     ).
+
 % Evidencia que sostiene una ubicacion
 
 ancla_anterior(P, T, Ev, Ta, M) :-
@@ -257,6 +258,7 @@ estado_en_intervalo(P, M, Ts, Estado) :-
 resumen_quien(M, H1, H2, Si, Pudo, S) :-
     lista_texto(Si, TSi), lista_texto(Pudo, TPudo),
     format(string(S), "Entre ~w y ~w en ~w. Estuvo con seguridad: ~w. Pudo estar: ~w.", [H1, H2, M, TSi, TPudo]).
+
 % Pregunta 3: quien pudo usar una tarjeta
 
 resolver([quien_tarjeta, Tarjeta, TA], R) :-
@@ -447,7 +449,7 @@ lista_texto(L, T) :- atomic_list_concat(L, ', ', A), atom_string(A, T).
 principal :-
     current_prolog_flag(argv, Argumentos),
     (   Argumentos = [Hechos|Pregunta], Pregunta \== []
-    ->  set_stream(user_output, encoding(utf8)),
+    ->  catch(set_stream(user_output, encoding(utf8)), _, true),
         catch(consult(Hechos), _, true),
         limite_segundos(L),
         catch(call_with_time_limit(L, responder(Pregunta, R)), Error, error_a_respuesta(Error, R)),
